@@ -10,26 +10,37 @@ function QrScanner() {
   const [currentCameraIndex, setCurrentCameraIndex] = useState(0);
   const [isStarting, setIsStarting] = useState(false);
 
-  // ✅ Helper: Start camera with proper config
+  // ✅ Start specific camera
   const startCamera = async (cameraId) => {
-    if (!html5QrCodeRef.current || isStarting) return;
+    if (isStarting) return;
     setIsStarting(true);
 
     try {
+      // Ensure old instance is cleared
+      if (html5QrCodeRef.current?._isScanning) {
+        await html5QrCodeRef.current.stop();
+      }
+
+      // Create a *fresh* instance every time for safety
+      html5QrCodeRef.current = new Html5Qrcode(readerRef.current.id);
+
       await html5QrCodeRef.current.start(
         { deviceId: { exact: cameraId } },
         {
           fps: 10,
           qrbox: (vw, vh) => {
-            const minEdge = Math.min(vw, vh);
-            const boxSize = minEdge * 0.6;
-            return { width: boxSize, height: boxSize };
+            const edge = Math.min(vw, vh) * 0.6;
+            return { width: edge, height: edge };
           },
-          aspectRatio: 1.0,
         },
-        (text) => setDecodedText(text),
-        (err) => {}
+        (decoded) => {
+          setDecodedText(decoded);
+        },
+        (err) => {
+          // Frame errors are normal; ignore
+        }
       );
+      console.log("Camera started:", cameraId);
     } catch (err) {
       console.error("Error starting camera:", err);
     } finally {
@@ -37,18 +48,20 @@ function QrScanner() {
     }
   };
 
-  // ✅ Helper: Stop camera safely
+  // ✅ Stop camera
   const stopCamera = async () => {
-    if (!html5QrCodeRef.current?._isScanning) return;
-    try {
-      await html5QrCodeRef.current.stop();
-      console.log("Camera stopped");
-    } catch (err) {
-      console.warn("Error stopping camera:", err);
+    if (html5QrCodeRef.current && html5QrCodeRef.current._isScanning) {
+      try {
+        await html5QrCodeRef.current.stop();
+        await html5QrCodeRef.current.clear();
+        console.log("Camera stopped.");
+      } catch (err) {
+        console.warn("Error stopping camera:", err);
+      }
     }
   };
 
-  // ✅ Switch between front/back cameras
+  // ✅ Switch between cameras
   const switchCamera = async () => {
     if (cameras.length < 2) {
       alert("Only one camera available");
@@ -56,26 +69,24 @@ function QrScanner() {
     }
 
     const nextIndex = (currentCameraIndex + 1) % cameras.length;
-    await stopCamera();
+    await stopCamera(); // Stop before switching
     await startCamera(cameras[nextIndex].id);
     setCurrentCameraIndex(nextIndex);
   };
 
-  // ✅ Initialize camera on mount
+  // ✅ Initialize on mount
   useEffect(() => {
     const init = async () => {
-      html5QrCodeRef.current = new Html5Qrcode(readerRef.current.id);
-
       try {
         const devices = await Html5Qrcode.getCameras();
-        setCameras(devices);
         if (devices.length > 0) {
+          setCameras(devices);
           await startCamera(devices[0].id);
         } else {
-          console.error("No cameras found");
+          console.error("No cameras found.");
         }
       } catch (err) {
-        console.error("Error initializing camera:", err);
+        console.error("Error initializing:", err);
       }
     };
 
@@ -90,10 +101,8 @@ function QrScanner() {
     <div className="qrcontainer">
       <h2>QR Scanner</h2>
 
-      {/* ✅ The actual QR camera feed area */}
       <div id="reader" className="qrarea" ref={readerRef}></div>
 
-      {/* ✅ Switch camera button */}
       <button
         onClick={switchCamera}
         disabled={isStarting}
