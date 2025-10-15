@@ -17,13 +17,17 @@ function QrScanner() {
     try {
       await html5QrCode.start(
         { deviceId: { exact: cameraId } },
-        { fps: 10, qrbox: 250 },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+        },
         (decodedText) => {
           setDecodedText(decodedText);
           console.log("Decoded:", decodedText);
         },
         (errorMessage) => {
-          // Ignore frame errors
+          // ignore frame errors
         }
       );
     } catch (err) {
@@ -38,7 +42,7 @@ function QrScanner() {
         await html5QrCodeRef.current.clear();
         console.log("Scanner stopped");
       } catch (err) {
-        console.warn("Stop error (ignored):", err);
+        console.warn("Stop error:", err);
       }
     }
   };
@@ -50,10 +54,8 @@ function QrScanner() {
     }
 
     await stopScanner();
-
     const nextIndex = (currentCameraIndex + 1) % cameras.length;
     setCurrentCameraIndex(nextIndex);
-
     const nextCameraId = cameras[nextIndex].id;
     startScanner(nextCameraId);
   };
@@ -64,7 +66,12 @@ function QrScanner() {
         const devices = await Html5Qrcode.getCameras();
         if (devices && devices.length) {
           setCameras(devices);
-          await startScanner(devices[0].id);
+          // Prefer back camera if found
+          const backCamera = devices.find((d) =>
+            d.label.toLowerCase().includes("back")
+          );
+          const startId = backCamera ? backCamera.id : devices[0].id;
+          await startScanner(startId);
         } else {
           console.error("No cameras found.");
         }
@@ -73,44 +80,47 @@ function QrScanner() {
       }
     };
 
-    const timeout = setTimeout(() => init(), 300);
-
-    return () => {
-      clearTimeout(timeout);
-      stopScanner();
-    };
+    init();
+    return () => stopScanner();
   }, []);
 
   return (
-    <div style={{ textAlign: "center" }}>
-      <h2>QR Scanner</h2>
+    <div style={{ textAlign: "center", padding: "20px" }}>
+      <h2 style={{ color: "white" }}>QR Scanner</h2>
       <div
         id="reader"
         ref={readerRef}
         style={{
-          width: "300px",
-          height: "300px",
+          width: "90vw",
+          height: "90vw",
+          maxWidth: "400px",
+          maxHeight: "400px",
           margin: "auto",
           border: "2px solid #333",
+          borderRadius: "10px",
+          overflow: "hidden",
         }}
       ></div>
 
-      <p>Decoded text: {decodedText || "None yet"}</p>
+      <p style={{ color: "#fff", marginTop: "10px" }}>
+        {decodedText ? `Decoded: ${decodedText}` : "No QR code detected yet"}
+      </p>
 
-      <button
-        onClick={switchCamera}
-        disabled={cameras.length < 2}
-        style={{
-          padding: "10px 20px",
-          background: "#007bff",
-          color: "#fff",
-          border: "none",
-          borderRadius: "5px",
-          cursor: "pointer",
-        }}
-      >
-        Switch Camera
-      </button>
+      {cameras.length > 1 && (
+        <button
+          onClick={switchCamera}
+          style={{
+            marginTop: "10px",
+            padding: "10px 20px",
+            background: "#007bff",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+          }}
+        >
+          Switch Camera
+        </button>
+      )}
     </div>
   );
 }
